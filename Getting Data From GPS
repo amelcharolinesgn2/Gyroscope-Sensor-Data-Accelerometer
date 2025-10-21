@@ -1,0 +1,102 @@
+You can access the device location through GPS using the following URL. Ensure that location permissions for the app are enabled in the device's app settings.
+
+         ws://<ip>:<port>/gps
+JSON response contains following key fields.
+
+Field	Description
+longitude	Longitude in degrees.
+latitude	Latitude in degrees.
+altitude	The altitude of the location in meters above the WGS84 reference ellipsoid.
+bearing	Bearing at the time of this location in degrees. Bearing is the horizontal direction of travel and is unrelated to device orientation. The bearing is guaranteed to be in the range [0, 360).
+accuracy	Estimated horizontal accuracy radius in meters of this location at the 68th percentile confidence level.
+speed	Speed at the time of this location in meters per second.
+time	The Unix epoch time of this location fix, in milliseconds since the start of the Unix epoch (00:00:00 January 1, 1970 UTC).
+Fields only for Android 8.0 and above.
+
+Field	Description
+speedAccuracyMetersPerSecond	Estimated speed accuracy in meters per second of this location at the 68th percentile confidence level.
+bearingAccuracyDegrees	Estimated bearing accuracy in degrees of this location at the 68th percentile confidence level.
+elapsedRealtimeNanos	Time of this fix in nanoseconds of elapsed realtime since system boot.
+verticalAccuracyMeters	The estimated altitude accuracy in meters of this location at the 68th percentile confidence level.
+It is important to note that the client only receives GPS updates when the location changes. Therefore, if the mobile device is stationary, the client will not receive any data. To address this, you can invoke getLastKnownLocation() from Android's Location API by sending a "getLastKnownLocation" message from the client side, as shown below:
+
+import websocket
+import json
+
+def on_message(ws, message):
+    data = json.loads(message)
+    lat , long = data["latitude"] , data["longitude"]
+    lastKnownLocation = data["lastKnowLocation"]
+    print(f"({lat},{long}) response to getLastKnownLocation = {lastKnownLocation}")
+
+def on_error(ws, error):
+    print("error occurred ", error)
+    
+def on_close(ws, close_code, reason):
+    print("connection closed : ", reason)
+    
+def on_open(ws):
+    print("connected")
+    ws.send("getLastKnowLocation") # will calls back on_message when lastKnowLocation is not null
+    
+
+def connect(url):
+    ws = websocket.WebSocketApp(url,
+                              on_open=on_open,
+                              on_message=on_message,
+                              on_error=on_error,
+                              on_close=on_close)
+
+    ws.run_forever()
+ 
+ 
+connect("ws://192.168.0.102:8081/gps")
+Other work around is to send "getLastKnownLocation" command periodically
+
+import websocket
+import json
+from time import sleep
+import sys
+import threading
+
+closed = False
+
+def on_message(ws, message):
+    data = json.loads(message)
+    lat , long = data["latitude"] , data["longitude"]
+    lastKnownLocation = data["lastKnowLocation"]
+    print(f"({lat},{long}) response to getLastKnownLocation = {lastKnownLocation}")
+
+def on_error(ws, error):
+    print("error occurred ", error)
+    
+def on_close(ws, close_code, reason):
+    global closed
+    closed = True
+    print("connection closed : ", reason)
+    
+def on_open(ws):
+    print("connected")
+    thread = threading.Thread(target=send_requests, args=(ws,))
+    thread.start()
+    
+
+def send_requests(ws):
+    while True:
+        if not closed:
+            ws.send("getLastKnownLocation")
+            sleep(1) # 1 second sleep
+        else:
+            sys.exit() # stop this thread    
+
+def connect(url):
+    ws = websocket.WebSocketApp(url,
+                              on_open=on_open,
+                              on_message=on_message,
+                              on_error=on_error,
+                              on_close=on_close)
+
+    ws.run_forever()
+ 
+ 
+connect(f"ws://192.168.0.102:8080/gps")
